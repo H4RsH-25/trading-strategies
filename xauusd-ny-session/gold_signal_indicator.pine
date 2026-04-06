@@ -1,0 +1,69 @@
+//@version=5
+indicator("Gold 20SMA Proximity Alert [NY Session]", overlay=true, max_labels_count=500)
+
+// ═══════════════════════════════════════════════
+// MOVING AVERAGES
+// ═══════════════════════════════════════════════
+sma20  = ta.sma(close, 20)
+ema200 = ta.ema(close, 200)
+
+// ═══════════════════════════════════════════════
+// NEW YORK SESSION (UTC 13:30–18:00 = IST 19:00–23:30)
+// ═══════════════════════════════════════════════
+ny_session = not na(time("5", "1330-1800:23456"))
+
+// ═══════════════════════════════════════════════
+// PROXIMITY TO 20 SMA ($2.00 zone)
+// Fires ONCE on first entry into zone
+// ═══════════════════════════════════════════════
+dist_from_sma     = math.abs(close - sma20)
+entered_proximity = dist_from_sma <= 2.00 and dist_from_sma[3] > 2.00
+
+// ═══════════════════════════════════════════════
+// MACD (12/26/9) — confirmation layer
+// ═══════════════════════════════════════════════
+[macd_line, signal_line, histogram] = ta.macd(close, 12, 26, 9)
+
+macd_bullish = histogram > 0
+macd_bearish = histogram < 0
+
+// ═══════════════════════════════════════════════
+// ALERT CONDITIONS
+// ═══════════════════════════════════════════════
+
+// Strong — MACD agrees with direction
+long_alert  = ny_session and entered_proximity and close > sma20 and macd_bullish
+short_alert = ny_session and entered_proximity and close < sma20 and macd_bearish
+
+// Weak — price at MA but MACD not confirming (yellow — use discretion)
+long_weak  = ny_session and entered_proximity and close > sma20 and not macd_bullish
+short_weak = ny_session and entered_proximity and close < sma20 and not macd_bearish
+
+// ═══════════════════════════════════════════════
+// PLOTS
+// ═══════════════════════════════════════════════
+plot(sma20,  title="20 SMA",  color=color.new(color.white, 0),  linewidth=2)
+plot(ema200, title="200 EMA", color=color.new(color.orange, 0), linewidth=2)
+
+// Zone bands
+plot(sma20 + 2.00, title="Zone Upper", color=color.new(color.yellow, 80), linewidth=1)
+plot(sma20 - 2.00, title="Zone Lower", color=color.new(color.yellow, 80), linewidth=1)
+
+// Strong signals — green/red
+plotshape(long_alert,  title="Long — Confirmed",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), textcolor=color.white, text="L",  size=size.small)
+plotshape(short_alert, title="Short — Confirmed", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0),   textcolor=color.white, text="S",  size=size.small)
+
+// Weak signals — yellow, requires extra discretion
+plotshape(long_weak,  title="Long — Weak",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.yellow, 0), textcolor=color.black, text="L?", size=size.small)
+plotshape(short_weak, title="Short — Weak", style=shape.triangledown, location=location.abovebar, color=color.new(color.yellow, 0), textcolor=color.black, text="S?", size=size.small)
+
+// NY Session background
+bgcolor(ny_session ? color.new(color.blue, 92) : na, title="NY Session")
+
+// ═══════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════
+alertcondition(long_alert,  title="LONG — MACD Confirmed",  message="GOLD 5M | NY — Price at 20 SMA. MACD bullish. Check structure and grade.")
+alertcondition(short_alert, title="SHORT — MACD Confirmed", message="GOLD 5M | NY — Price at 20 SMA. MACD bearish. Check structure and grade.")
+alertcondition(long_weak,   title="LONG — Weak (No MACD)",  message="GOLD 5M | NY — Price at 20 SMA. MACD not confirming. Extra discretion needed.")
+alertcondition(short_weak,  title="SHORT — Weak (No MACD)", message="GOLD 5M | NY — Price at 20 SMA. MACD not confirming. Extra discretion needed.")
