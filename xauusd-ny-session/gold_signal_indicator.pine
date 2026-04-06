@@ -1,5 +1,4 @@
 //@version=6
-
 indicator("Gold 20SMA Proximity Alert [NY Session]", overlay=true, max_labels_count=500)
 
 // ═══════════════════════════════════════════════
