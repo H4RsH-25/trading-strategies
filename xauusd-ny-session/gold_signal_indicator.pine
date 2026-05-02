@@ -1,16 +1,11 @@
 //@version=6
-indicator("Gold 20SMA Proximity Alert [NY Session]", overlay=true, max_labels_count=500)
+indicator("Gold indicator ", overlay=true, ax_labels_count=500)
 
 // ═══════════════════════════════════════════════
 // MOVING AVERAGES
 // ═══════════════════════════════════════════════
 sma20  = ta.sma(close, 20)
-ema200 = ta.ema(close, 200)
-
-// ═══════════════════════════════════════════════
-// NEW YORK SESSION (UTC 13:30–18:00 = IST 19:00–23:30)
-// ═══════════════════════════════════════════════
-ny_session = not na(time("5", "1300-2200:23456"))
+ema200 = ta.ema(close, 150)
 
 // ═══════════════════════════════════════════════
 // PROXIMITY TO 20 SMA ($2.00 zone)
@@ -32,12 +27,12 @@ macd_bearish = histogram < 0
 // ═══════════════════════════════════════════════
 
 // Strong — MACD agrees with direction
-long_alert  = ny_session and entered_proximity and close > sma20 and macd_bullish
-short_alert = ny_session and entered_proximity and close < sma20 and macd_bearish
+long_alert  = entered_proximity and close > sma20 and macd_bullish
+short_alert = entered_proximity and close < sma20 and macd_bearish
 
 // Weak — price at MA but MACD not confirming (yellow — use discretion)
-long_weak  = ny_session and entered_proximity and close > sma20 and not macd_bullish
-short_weak = ny_session and entered_proximity and close < sma20 and not macd_bearish
+long_weak  =  entered_proximity and close > sma20 and not macd_bullish
+short_weak =  entered_proximity and close < sma20 and not macd_bearish
 
 // ═══════════════════════════════════════════════
 // PLOTS
@@ -57,8 +52,6 @@ plotshape(short_alert, title="Short — Confirmed", style=shape.triangledown, lo
 plotshape(long_weak,  title="Long — Weak",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.yellow, 0), textcolor=color.black, text="L?", size=size.small)
 plotshape(short_weak, title="Short — Weak", style=shape.triangledown, location=location.abovebar, color=color.new(color.yellow, 0), textcolor=color.black, text="S?", size=size.small)
 
-// NY Session background
-bgcolor(ny_session ? color.new(color.blue, 92) : na, title="NY Session")
 
 // ═══════════════════════════════════════════════
 // ALERTS
