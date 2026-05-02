@@ -1,8 +1,5 @@
 ### Gold Larp-cator — README
 
-Source: 
-
----
 
 #### Overview
 
