@@ -1,0 +1,203 @@
+//@version=6
+indicator("Gold Larp-cator", overlay=true, max_labels_count=500)
+
+// ═══════════════════════════════════════════════
+// MOVING AVERAGES
+// ═══════════════════════════════════════════════
+sma20  = ta.sma(close, 15)
+ema200 = ta.ema(close, 150)
+
+ema_slope = ema200 - ema200[10]
+trend_ok  = math.abs(ema_slope) > 0.8
+// ═══════════════════════════════════════════════
+// SESSION FILTER (easily re-enable by changing true to session time)
+// ═══════════════════════════════════════════════
+
+
+// ═══════════════════════════════════════════════
+// PROXIMITY TO 20 SMA ($2.00 zone)
+// Fires ONCE — price must fully exit zone before re-firing
+// ═══════════════════════════════════════════════
+dist_from_sma     = math.abs(close - sma20)
+entered_proximity = dist_from_sma <= 1.50 
+
+// ═══════════════════════════════════════════════
+// MACD (12/26/9) — confirmation layer
+// ═══════════════════════════════════════════════
+[macd_line, signal_line, histogram] = ta.macd(close, 12, 26, 9)
+macd_bullish = ta.crossover(histogram, 0)
+macd_bearish = ta.crossunder(histogram, 0)
+// ═══════════════════════════════════════════════
+// ALERT CONDITIONS
+// ═══════════════════════════════════════════════
+ long_alert  = entered_proximity and close > sma20 and macd_bullish  and  trend_ok
+ short_alert =  entered_proximity and close < sma20 and macd_bearish  and trend_ok
+long_weak   =  entered_proximity and close > sma20 and not macd_bullish  and trend_ok
+short_weak  = entered_proximity and close < sma20 and not macd_bearish   and trend_ok
+
+// ═══════════════════════════════════════════════
+// BOLLINGER BANDS (20, 2) 
+// ═══════════════════════════════════════════════
+[bb_upper, bb_basis, bb_lower] = ta.bb(close, 20, 2)
+plot(bb_upper, title="BB Upper", color=color.new(#8e5500, 75), linewidth=1)
+plot(bb_lower, title="BB Lower", color=color.new(color.purple, 75), linewidth=1)
+plot(bb_basis, title="BB Basis", color=color.new(color.purple, 85), linewidth=1)
+
+// ═══════════════════════════════════════════════
+// GANN LEVELS — static percentage-based levels from recent high/low
+
+// ═══════════════════════════════════════════════
+gann_lookback = 50
+gann_high = ta.highest(high, gann_lookback)
+gann_low  = ta.lowest(low,  gann_lookback)
+gann_range = gann_high - gann_low
+
+gann_25  = gann_low + gann_range * 0.25
+gann_50  = gann_low + gann_range * 0.50
+gann_75  = gann_low + gann_range * 0.75
+
+plot(gann_25, title="Gann 25%", color=color.new(color.yellow, 85), linewidth=1, style=plot.style_circles)
+plot(gann_50, title="Gann 50%", color=color.new(color.yellow, 80), linewidth=1, style=plot.style_circles)
+plot(gann_75, title="Gann 75%", color=color.new(color.yellow, 85), linewidth=1, style=plot.style_circles)
+
+// ═══════════════════════════════════════════════
+// VWAP — semi-transparent, looks pro
+// ═══════════════════════════════════════════════
+vwap_val = ta.vwap(hlc3)
+plot(vwap_val, title="VWAP", color=color.new(color.teal, 60), linewidth=1)
+
+// ═══════════════════════════════════════════════
+// SESSION HIGHS & LOWS — NY session (13:00–22:00 UTC)
+// These are real and useful — full opacity
+// ═══════════════════════════════════════════════
+is_ny = not na(time("5", "1300-2200:23456"))
+
+var float session_high = na
+var float session_low  = na
+var float prev_session_high = na
+var float prev_session_low  = na
+
+// Reset at session open, track during session
+if is_ny and not is_ny[1]
+    prev_session_high := session_high
+    prev_session_low  := session_low
+    session_high      := high
+    session_low       := low
+else if is_ny
+    session_high := math.max(session_high, high)
+    session_low  := math.min(session_low,  low)
+
+plot(session_high,      title="Session High",      color=color.new(color.green, 0),  linewidth=1, style=plot.style_stepline)
+plot(session_low,       title="Session Low",       color=color.new(color.red, 0),    linewidth=1, style=plot.style_stepline)
+plot(prev_session_high, title="Prev Session High", color=color.new(color.green, 60), linewidth=1, style=plot.style_stepline)
+plot(prev_session_low,  title="Prev Session Low",  color=color.new(color.red, 60),   linewidth=1, style=plot.style_stepline)
+
+// ═══════════════════════════════════════════════
+// CORE MAs — full opacity, always on top
+// ═══════════════════════════════════════════════
+plot(sma20,  title="20 SMA",  color=color.new(color.white, 0),  linewidth=2)
+plot(ema200, title="200 EMA", color=color.new(color.orange, 0), linewidth=2)
+
+// Zone bands
+plot(sma20 + 2.00, title="Zone Upper", color=color.new(color.yellow, 80), linewidth=1)
+plot(sma20 - 2.00, title="Zone Lower", color=color.new(color.yellow, 80), linewidth=1)
+
+// ═══════════════════════════════════════════════
+// SIGNAL SHAPES
+// ═══════════════════════════════════════════════
+  plotshape(long_alert,  title="Long — Confirmed",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0),  textcolor=color.white, text="L",  size=size.small)
+  plotshape(short_alert, title="Short — Confirmed", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0),    textcolor=color.white, text="S",  size=size.small)
+plotshape(long_weak,   title="Long — Weak",       style=shape.triangleup,   location=location.belowbar, color=color.new(color.yellow, 0), textcolor=color.black, text="L?", size=size.small)
+plotshape(short_weak,  title="Short — Weak",      style=shape.triangledown, location=location.abovebar, color=color.new(color.yellow, 0), textcolor=color.black, text="S?", size=size.small)
+
+
+// ═══════════════════════════════════════════════
+// ALERTS
+// ═══════════════════════════════════════════════
+alertcondition(long_alert,  title="LONG — MACD Confirmed",  message="GOLD 5M | NY — Price at 20 SMA. MACD bullish. Check structure and grade.")
+alertcondition(short_alert, title="SHORT — MACD Confirmed", message="GOLD 5M | NY — Price at 20 SMA. MACD bearish. Check structure and grade.")
+alertcondition(long_weak,   title="LONG — Weak (No MACD)",  message="GOLD 5M | NY — Price at 20 SMA. MACD not confirming. Extra discretion needed.")
+alertcondition(short_weak,  title="SHORT — Weak (No MACD)", message="GOLD 5M | NY — Price at 20 SMA. MACD not confirming. Extra discretion needed.")
+
+
+
+
+
+grp_sar   = "SAR "
+grp_trail = "trail"
+grp_bias  = "BIAS"
+
+sar_start = input.float(0.03, "SAR ", step=0.01, minval=0.001, maxval=0.5, group=grp_sar)
+sar_inc   = input.float(0.03, "SAR ", step=0.01, minval=0.001, maxval=0.5, group=grp_sar)
+sar_max   = input.float(0.6,  "SAR ", step=0.01, minval=0.01,  maxval=1.0, group=grp_sar)
+
+show_trail      = input.bool(true,  "顯示移動停利線",     group=grp_trail)
+show_trail_cons = input.bool(true,  "顯示保守停利 (95%)", group=grp_trail)
+show_trail_wide = input.bool(true,  "顯示寬鬆停利 (92%)", group=grp_trail)
+trail_cons_pct  = input.float(5.0,  "保守回檔 %", minval=1.0, maxval=20.0, step=0.5, group=grp_trail)
+trail_wide_pct  = input.float(8.0,  "寬鬆回檔 %", minval=1.0, maxval=20.0, step=0.5, group=grp_trail)
+
+bias_threshold = input.float(25.0, "BIAS 過熱閾值 (%)", minval=5.0, maxval=50.0, step=1.0, group=grp_bias)
+show_bias_warn = input.bool(true,  "顯示 BIAS 過熱提示", group=grp_bias)
+
+ma5   = ta.sma(close,20)
+ma20  = ta.sma(close, 20)
+ma60  = ta.sma(close, 50)
+ma120 = ta.sma(close, 120)
+ma200 = ta.sma(close, 200)
+
+sar_val       = ta.sar(sar_start, sar_inc, sar_max)
+sar_bull      = sar_val < close
+sar_bear      = sar_val > close
+sar_flip_up   = sar_bull and not sar_bull[1]
+sar_flip_down = sar_bear and not sar_bear[1]
+
+plot(sar_val, "SAR", color=sar_bull ? color.new(#26a69a, 0) : color.new(#ef5350, 0),
+     style=plot.style_circles, linewidth=1)
+
+bias     = (close - ma200) / ma200 * 100
+bias_hot = bias > bias_threshold
+
+gate1        = close > ma200 and not bias_hot
+golden_cross = ta.crossover(ma5, ma200)          
+gate2        = sar_flip_up or golden_cross
+dist_ma60    = (ma60  - close) / close * 100
+dist_ma120   = (ma120 - close) / close * 100
+pressure_near= (ma60 > close and dist_ma60 < 3.0) or (ma120 > close and dist_ma120 < 3.0)
+gate3        = not pressure_near
+
+buy_signal   = gate1 and gate2 and gate3 and ema_slope > 0 and trend_ok
+
+sell_a = sar_flip_down and close < ma20 
+
+var float highest_after_buy = na
+var bool  in_trade          = false
+
+if buy_signal and not in_trade
+    in_trade          := true
+    highest_after_buy := high
+
+if in_trade
+    highest_after_buy := na(highest_after_buy) ? high : math.max(highest_after_buy, high)
+
+trail_cons_price = in_trade ? highest_after_buy * (1 - trail_cons_pct / 100) : na
+trail_wide_price = in_trade ? highest_after_buy * (1 - trail_wide_pct / 100) : na
+
+sell_b_cons = in_trade and low <= trail_cons_price
+sell_b_wide = in_trade and low <= trail_wide_price
+
+sell_signal = (sell_a or sell_b_cons or sell_b_wide) and trend_ok
+
+if sell_signal
+    in_trade := false
+    highest_after_buy := na
+
+plotshape(sell_signal, title="sell_signal", location=location.abovebar,
+    style=shape.triangledown, size=size.small,
+     color=color.new(#FF1744, 0), text="sell_v2", textcolor=color.new(#ff0033, 0))
+
+plotshape(buy_signal, title="buy_signal", location=location.belowbar,
+     style=shape.triangleup, size=size.small,
+     color=color.new(#00E676, 0), text="buy_v2", textcolor=color.new(#00ef10, 0))
+
+bgcolor(show_bias_warn and bias_hot ? color.new(#FF6D00, 92) : na)
