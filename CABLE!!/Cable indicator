@@ -1,5 +1,5 @@
 //@version=6
-indicator("cable indicator", overlay=true, max_labels_count=500)
+indicator("cable indicator", overlay=false, max_labels_count=500)
 
 // ═══════════════════════════════════════════════
 // MOVING AVERAGES
@@ -8,14 +8,141 @@ sma20  = ta.sma(close, 20)
 ema200 = ta.ema(close, 150)
 
 // ═══════════════════════════════════════════════
-// PROXIMITY TO 20 SMA ($2.00 zone)
-// Fires ONCE on first entry into zone
+// BOLLINGER BANDS (20, 2)
+// ═══════════════════════════════════════════════
+bb_length = input.int(20,    title="BB Length")
+bb_mult   = input.float(2.0, title="BB Multiplier")
+bb_basis  = ta.sma(close, bb_length)
+bb_dev    = bb_mult * ta.stdev(close, bb_length)
+bb_upper  = bb_basis + bb_dev
+bb_lower  = bb_basis - bb_dev
+
+p_bb_upper = plot(bb_upper, title="BB Upper", color=color.new(color.aqua, 70), linewidth=1)
+p_bb_lower = plot(bb_lower, title="BB Lower", color=color.new(color.aqua, 70), linewidth=1)
+fill(p_bb_upper, p_bb_lower, color=color.new(color.aqua, 92), title="BB Fill")
+
+// ═══════════════════════════════════════════════
+// GANN LEVELS (25 / 50 / 75%)
+// ═══════════════════════════════════════════════
+gann_period = input.int(50, title="Gann Lookback")
+gann_high   = ta.highest(high, gann_period)
+gann_low    = ta.lowest(low,  gann_period)
+gann_range  = gann_high - gann_low
+
+gann_25 = gann_low + gann_range * 0.25
+gann_50 = gann_low + gann_range * 0.50
+gann_75 = gann_low + gann_range * 0.75
+
+plot(gann_25, title="Gann 25%", color=color.new(color.purple, 50), linewidth=1, style=plot.style_circles)
+plot(gann_50, title="Gann 50%", color=color.new(color.purple, 30), linewidth=1, style=plot.style_circles)
+plot(gann_75, title="Gann 75%", color=color.new(color.purple, 50), linewidth=1, style=plot.style_circles)
+
+// ═══════════════════════════════════════════════
+// VWAP
+// ═══════════════════════════════════════════════
+vwap_val = ta.vwap(hlc3)
+plot(vwap_val, title="VWAP", color=color.new(color.teal, 0), linewidth=2)
+
+// ═══════════════════════════════════════════════
+// SESSION LEVELS — NY
+// ═══════════════════════════════════════════════
+is_ny_session = (hour(time, "America/New_York") >= 9 and hour(time, "America/New_York") < 17)
+is_new_day    = ta.change(dayofweek) != 0 or (hour == 0 and minute == 0)
+
+var float session_high = na
+var float session_low  = na
+var float prev_high    = na
+var float prev_low     = na
+
+if is_new_day
+    prev_high    := session_high
+    prev_low     := session_low
+    session_high := high
+    session_low  := low
+
+if is_ny_session
+    session_high := math.max(nz(session_high, high), high)
+    session_low  := math.min(nz(session_low,  low),  low)
+
+plot(session_high, title="NY Session High",   color=color.new(color.lime, 30), linewidth=1, style=plot.style_stepline)
+plot(session_low,  title="NY Session Low",    color=color.new(color.lime, 30), linewidth=1, style=plot.style_stepline)
+plot(prev_high,    title="Prev Session High", color=color.new(color.gray, 40), linewidth=1, style=plot.style_stepline)
+plot(prev_low,     title="Prev Session Low",  color=color.new(color.gray, 40), linewidth=1, style=plot.style_stepline)
+
+// ═══════════════════════════════════════════════
+// BIAS FILTER
+// ═══════════════════════════════════════════════
+bias_threshold = input.float(0.0030, title="Bias Threshold (% from EMA200)", step=0.0001)
+dist_from_ema  = math.abs(close - ema200) / ema200
+bias_blocked   = dist_from_ema > bias_threshold
+
+bgcolor(bias_blocked ? color.new(color.red, 94) : na, title="Bias Block Zone")
+
+// ═══════════════════════════════════════════════
+// PARABOLIC SAR — visible dots, color-code
+// ═══════════════════════════════════════════════
+sar_start = input.float(0.02,  title="SAR Start",     step=0.01)
+sar_inc   = input.float(0.02,  title="SAR Increment",  step=0.01)
+sar_max   = input.float(0.2,   title="SAR Max",        step=0.01)
+
+sar_val      = ta.sar(sar_start, sar_inc, sar_max)
+sar_bullish  = sar_val < close  // SAR below price = uptrend
+
+// Larger dots, clearly visible, green below / red above
+plotshape(sar_bullish, title="SAR Bull", style=shape.circle,
+          location=location.absolute, 
+          color=color.new(color.green, 20), size=size.tiny)
+
+plotshape(not sar_bullish, title="SAR Bear", style=shape.circle,
+          location=location.absolute, 
+          color=color.new(color.red, 20), size=size.tiny)
+// Invisible price plot to anchor SAR value for plotshape yloc
+plot(sar_val, title="SAR Value", display=display.none)
+
+// ═══════════════════════════════════════════════
+// ATR TRAILING STOP
+// Dynamic risk line — flips side on trend change
+// ═══════════════════════════════════════════════
+atr_length   = input.int(14,   title="ATR Length")
+atr_mult     = input.float(2.5, title="ATR Multiplier", step=0.1)
+atr_val      = ta.atr(atr_length)
+
+var float atr_trail = na
+var int   atr_dir   = 1  // 1 = bullish trail (below price), -1 = bearish
+
+atr_trail_up   = close - atr_mult * atr_val
+atr_trail_down = close + atr_mult * atr_val
+
+if na(atr_trail)
+    atr_trail := atr_trail_up
+
+if atr_dir == 1
+    atr_trail := math.max(atr_trail, atr_trail_up)
+    if close < atr_trail
+        atr_dir   := -1
+        atr_trail := atr_trail_down
+else
+    atr_trail := math.min(atr_trail, atr_trail_down)
+    if close > atr_trail
+        atr_dir   := 1
+        atr_trail := atr_trail_up
+
+atr_bull = atr_dir == 1
+atr_bear = atr_dir == -1
+
+plot(atr_bull ? atr_trail : na, title="ATR Trail (Bull)",
+     color=color.new(color.green, 20), linewidth=2, style=plot.style_linebr)
+plot(atr_bear ? atr_trail : na, title="ATR Trail (Bear)",
+     color=color.new(color.red,   20), linewidth=2, style=plot.style_linebr)
+
+// ═══════════════════════════════════════════════
+// PROXIMITY TO 20 SMA
 // ═══════════════════════════════════════════════
 dist_from_sma     = math.abs(close - sma20)
 entered_proximity = dist_from_sma <= 0.0007 and dist_from_sma[5] > 0.0007
 
 // ═══════════════════════════════════════════════
-// MACD (12/26/9) — confirmation layer
+// MACD (12/26/9)
 // ═══════════════════════════════════════════════
 [macd_line, signal_line, histogram] = ta.macd(close, 12, 26, 9)
 
@@ -23,40 +150,34 @@ macd_bullish = histogram > 0
 macd_bearish = histogram < 0
 
 // ═══════════════════════════════════════════════
-// ALERT CONDITIONS
+// SIGNAL CONDITIONS
+// All gated by bias filter + ATR trend agreement
 // ═══════════════════════════════════════════════
+long_alert  = entered_proximity and close > sma20 and macd_bullish and not bias_blocked and atr_bull
+short_alert = entered_proximity and close < sma20 and macd_bearish and not bias_blocked and atr_bear
 
-// Strong — MACD agrees with direction
-long_alert  = entered_proximity and close > sma20 and macd_bullish
-short_alert = entered_proximity and close < sma20 and macd_bearish
-
-// Weak — price at MA but MACD not confirming (yellow — use discretion)
-long_weak  =  entered_proximity and close > sma20 and not macd_bullish
-short_weak =  entered_proximity and close < sma20 and not macd_bearish
+long_weak   = entered_proximity and close > sma20 and not macd_bullish and not bias_blocked
+short_weak  = entered_proximity and close < sma20 and not macd_bearish and not bias_blocked
 
 // ═══════════════════════════════════════════════
-// PLOTS
+// CORE MA PLOTS
 // ═══════════════════════════════════════════════
-plot(sma20,  title="20 SMA",  color=color.new(color.white, 0),  linewidth=2)
+plot(sma20,  title="20 SMA",  color=color.new(color.white,  0), linewidth=2)
 plot(ema200, title="200 EMA", color=color.new(color.orange, 0), linewidth=2)
 
-// Zone bands
 plot(sma20 + 0.0007, title="Zone Upper", color=color.new(color.yellow, 80), linewidth=1)
 plot(sma20 - 0.0007, title="Zone Lower", color=color.new(color.yellow, 80), linewidth=1)
 
-// Strong signals — green/red
-plotshape(long_alert,  title="Long — Confirmed",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green, 0), textcolor=color.white, text="L",  size=size.small)
-plotshape(short_alert, title="Short — Confirmed", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 0),   textcolor=color.white, text="S",  size=size.small)
-
-// Weak signals — yellow, requires extra discretion
-plotshape(long_weak,  title="Long — Weak",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.yellow, 0), textcolor=color.black, text="L?", size=size.small)
-plotshape(short_weak, title="Short — Weak", style=shape.triangledown, location=location.abovebar, color=color.new(color.yellow, 0), textcolor=color.black, text="S?", size=size.small)
-
+plotshape(long_alert,  title="Long — Confirmed",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.green,  0), textcolor=color.white, text="L",  size=size.small)
+plotshape(short_alert, title="Short — Confirmed", style=shape.triangledown, location=location.abovebar, color=color.new(color.red,    0), textcolor=color.white, text="S",  size=size.small)
+plotshape(long_weak,   title="Long — Weak",       style=shape.triangleup,   location=location.belowbar, color=color.new(color.yellow, 0), textcolor=color.black, text="L?", size=size.small)
+plotshape(short_weak,  title="Short — Weak",      style=shape.triangledown, location=location.abovebar, color=color.new(color.yellow, 0), textcolor=color.black, text="S?", size=size.small)
 
 // ═══════════════════════════════════════════════
-// ALERTS
+// RSI PANE — separate window, no overlay clutter
 // ═══════════════════════════════════════════════
-alertcondition(long_alert,  title="LONG — MACD Confirmed",  message="GOLD 5M | NY — Price at 20 SMA. MACD bullish. Check structure and grade.")
-alertcondition(short_alert, title="SHORT — MACD Confirmed", message="GOLD 5M | NY — Price at 20 SMA. MACD bearish. Check structure and grade.")
-alertcondition(long_weak,   title="LONG — Weak (No MACD)",  message="GOLD 5M | NY — Price at 20 SMA. MACD not confirming. Extra discretion needed.")
-alertcondition(short_weak,  title="SHORT — Weak (No MACD)", message="GOLD 5M | NY — Price at 20 SMA. MACD not confirming. Extra discretion needed.")
+rsi_length = input.int(14, title="RSI Length")
+rsi_val    = ta.rsi(close, rsi_length)
+rsi_ob     = input.int(70,  title="RSI Overbought")
+rsi_os     = input.int(30,  title="RSI Oversold")
+
